@@ -1,72 +1,20 @@
-# Equipment Reservation Challenge - Starter
+# Equipment Reservation Planner
 
-Starter application for the **Senior Full Stack Developer Take Home Assessment**. The assessment is designed for **4–6 focused hours** and uses only local, free, open-source tooling.
+Shared equipment reservation planner built on the provided starter (Next.js, Prisma + SQLite, Material UI). It includes both assessment tickets: the availability fix and the create reservation flow.
 
-## Requirements
+## Setup
 
-- Node.js 22 (see `.nvmrc`)
-- pnpm 11 (the exact package-manager version is pinned in `package.json`)
-
-## Quick Start
+Requirements: Node.js 22 (see `.nvmrc`) and pnpm 11.
 
 ```bash
 pnpm install
-pnpm db:setup
+pnpm db:setup   # generate the Prisma client, apply migrations and seed SQLite
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No separate environment setup is required. The application defaults to a local SQLite database at `dev.db`; `DATABASE_URL` may optionally override it.
+Open [http://localhost:3000](http://localhost:3000). No environment variables or external services are needed; the app uses a local SQLite file (`dev.db`).
 
-## Database Setup
-
-`pnpm db:setup` generates the Prisma client, applies the schema to SQLite, and loads deterministic starter data. To restore that known state later, run:
-
-```bash
-pnpm db:reset
-```
-
-Use `pnpm db:seed` to reload the deterministic seed without recreating the schema. Both reset and seed replace local reservation data.
-
-## Project Overview
-
-- A **Location** owns equipment and reservations.
-- **Equipment** has a total quantity at one location.
-- A **Reservation** covers a time interval at one location and is either `DRAFT` or `CONFIRMED`.
-- A **ReservationItem** explicitly links a reservation to equipment with a requested quantity.
-- Only `CONFIRMED` reservations consume availability.
-
-The seeded reservation list is complete starter functionality. The note editor is a small, working mutation example; it is not one of the assessment tickets.
-
-## Architecture
-
-- `src/app` — App Router pages, loading/error boundaries, and API routes
-- `src/features/reservations` — reservation-list UI and note form
-- `src/schemas` — shared Zod request/form validation
-- `src/server/reservations` — typed reads and reservation domain operations
-- `src/lib` — Prisma client and small shared server utilities
-- `src/types` — shared UI-facing domain types
-- `prisma/schema.prisma` — relational data model
-- `prisma/seed.ts` — deterministic local data
-
-## Candidate Tasks
-
-1. **Fix Reservation Availability.** Correct the existing availability behavior so it follows all documented business rules.
-2. **Implement Create Reservation.** Build the client validation, server mutation, persistence, availability enforcement for confirmed reservations, and appropriate success/error experience.
-
-**Optional bonus:** Edit Reservation. This is not required.
-
-No automated tests are required. Focus on clear production-style code, sound business rules, and useful manual verification.
-
-## Business Rules
-
-- Reservation intervals use `[start, end)` semantics: the start is inclusive and the end is exclusive.
-- Adjacent reservations do not overlap. For example, `09:00–12:00` and `12:00–15:00` can both be reserved.
-- Only `CONFIRMED` reservations consume inventory; `DRAFT` reservations do not.
-- Quantity must be positive.
-- Requested quantity may not exceed the available quantity.
-- Availability is location-specific.
-- The server is authoritative and must re-check availability before confirming a reservation.
-- An unavailable confirmed request must return an actionable domain error, such as: `Only 2 Generators are available for the selected period.`
+`pnpm db:reset` restores the seed data at any time. If you switch Node versions after installing, run `pnpm rebuild better-sqlite3` so the native SQLite driver matches the new runtime.
 
 ## Useful Commands
 
@@ -80,14 +28,41 @@ No automated tests are required. Focus on clear production-style code, sound bus
 | `pnpm db:seed` | Reload deterministic seed data |
 | `pnpm db:reset` | Restore deterministic starter data |
 
-## No External Services
+## Assumptions
 
-No external services, API keys, authentication providers, cloud accounts, paid components, Docker, or private package registries are required.
+- Times are entered and displayed in UTC. The list already showed UTC, so the form uses the same reference instead of the browser's time zone.
+- Equipment units are interchangeable. A reservation asks for a quantity of a type, not for specific units.
+- There is no buffer between reservations: a unit returned at 12:00 can be picked up again at 12:00.
+- Availability for a period is the total quantity minus the highest number of units used at the same time by confirmed reservations in that period. Two back-to-back reservations of 2 Generators (09:00–12:00 and 12:00–15:00) never use 4 at once, so an 11:00–13:00 request still sees 2 available.
+- Drafts don't consume inventory and skip the availability check, but they are still validated: dates, quantities, and equipment that belongs to the selected location.
+- Each equipment type appears once per reservation, which the database also enforces.
+- Past dates are allowed, since the brief doesn't rule them out.
 
-## Scope
+## Technical decisions
 
-Do not build authentication or user management, payments, invoicing, taxes, accounting, email/SMS, external API integrations, cloud infrastructure, Redis, Datadog, CI/CD, Trigger.dev workflows, microservices, or event sourcing. Edit Reservation is bonus-only, and automated tests are not required.
+- **Availability** (`src/server/reservations/availability.ts`): overlapping reservations are found with a half-open filter (`startAt < end` and `endAt > start`). Peak usage is computed with a small sweep over start/end events, applying releases before claims at the same instant so adjacent reservations don't add up.
+- **Validation**: one Zod schema (`src/schemas/create-reservation.ts`) is shared by the form and the API, so both enforce the same rules. Dates must match the `datetime-local` format, because `new Date()` alone accepts values like `"1"`.
+- **Create endpoint**: `POST /api/reservations` follows the conventions of the existing note route: flat `{ error, code }` responses, `400` for validation errors, and domain errors with their own status code.
+- **Atomic confirmation** (`src/server/reservations/create-reservation.ts`): the availability check and the insert run in the same Prisma transaction, and the availability functions receive the transaction client so the check reads inside it. A conflict returns `409 AVAILABILITY_EXCEEDED` with a message like "Only 2 Generators are available for the selected period."
+- **Form** (`src/features/reservations/create-reservation-form.tsx`): React Hook Form with `useFieldArray` for the items, native `datetime-local` inputs (no date library added), and the same `fetch` + `router.refresh()` pattern the note editor uses. Location and equipment options are loaded by the server page.
 
-## Submission
+## Trade-offs and incomplete work
 
-Follow the submission instructions in the assessment document you received.
+- Edit Reservation (bonus) is not implemented, so a draft can't be confirmed after it's created. Supporting it mostly means letting the availability check exclude the reservation being edited.
+- When several items conflict, only the first one is reported.
+- UTC input keeps the app consistent, but people naturally type their local time. A time zone per location (Austin and Dallas are both `America/Chicago`) would be the better product choice.
+- There is no success message after creating a reservation; the user is taken back to the list.
+- Error messages pluralize by adding an "s", which works for the current equipment names.
+- There are no automated tests, since the brief doesn't require them. Boundaries, peak usage, drafts, validation errors, conflicts, and two concurrent confirmations were verified manually against the seed data.
+
+## Production considerations
+
+**Concurrent confirmations.** SQLite handles one write at a time, so the transaction is enough here: when two confirmations race for the last 2 Generators, one succeeds and the other gets the availability error. On Postgres, the default isolation level would let both pass the check. I would lock the affected equipment rows (`SELECT ... FOR UPDATE`) before checking availability, or use `SERIALIZABLE` transactions and retry on serialization failures.
+
+**Higher traffic.**
+
+- The existing index on `Reservation(locationId, status, startAt, endAt)` covers the overlap query. With many reservations, the peak calculation could move into SQL instead of loading rows into memory.
+- The reservation list loads every row; it would need pagination or a date range filter.
+- Availability reads could be cached per location and period, and invalidated whenever a reservation for that location is created or changed.
+- In a multi-tenant product, every query would be scoped by tenant and permissions checked on the server before any mutation.
+- Structured logs and a metric for availability conflicts would show where inventory is running short.
