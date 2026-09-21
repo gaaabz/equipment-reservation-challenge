@@ -1,12 +1,14 @@
 import { DomainError } from "@/lib/domain-error";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
+import type { ReservationStatusValue } from "@/types/reservation";
 
 interface AvailabilityInput {
   locationId: string;
   equipmentId: string;
   startAt: Date;
   endAt: Date;
+  excludeReservationId?: string;
 }
 
 interface AvailabilityCheckInput extends AvailabilityInput {
@@ -40,6 +42,7 @@ export async function getAvailableQuantity(
       startAt: { lt: input.endAt },
       endAt: { gt: input.startAt },
       items: { some: { equipmentId: input.equipmentId } },
+      ...(input.excludeReservationId ? { id: { not: input.excludeReservationId } } : {}),
     },
     select: {
       startAt: true,
@@ -105,4 +108,60 @@ export async function checkAvailability(
     available: input.requestedQuantity <= availableQuantity,
     availableQuantity,
   };
+}
+
+interface AssertReservationAvailabilityInput {
+  locationId: string;
+  startAt: Date;
+  endAt: Date;
+  status: ReservationStatusValue;
+  items: { equipmentId: string; quantity: number }[];
+  excludeReservationId?: string;
+}
+
+export async function assertReservationAvailability(
+  input: AssertReservationAvailabilityInput,
+  db: Prisma.TransactionClient = prisma,
+): Promise<void> {
+  const equipment = await db.equipment.findMany({
+    where: { locationId: input.locationId, id: { in: input.items.map((item) => item.equipmentId) } },
+    select: { id: true, name: true },
+  });
+  const equipmentById = new Map(equipment.map((item) => [item.id, item]));
+
+  for (const item of input.items) {
+    if (!equipmentById.has(item.equipmentId)) {
+      throw new DomainError(
+        "Selected equipment was not found at the selected location.",
+        404,
+        "EQUIPMENT_NOT_FOUND",
+      );
+    }
+  }
+
+  if (input.status === "CONFIRMED") {
+    for (const item of input.items) {
+      const available = await getAvailableQuantity(
+        {
+          locationId: input.locationId,
+          equipmentId: item.equipmentId,
+          startAt: input.startAt,
+          endAt: input.endAt,
+          excludeReservationId: input.excludeReservationId,
+        },
+        db,
+      );
+
+      if (item.quantity > available) {
+        const name = equipmentById.get(item.equipmentId)!.name;
+        const message =
+          available === 0
+            ? `No ${name}s are available for the selected period.`
+            : available === 1
+              ? `Only 1 ${name} is available for the selected period.`
+              : `Only ${available} ${name}s are available for the selected period.`;
+        throw new DomainError(message, 409, "AVAILABILITY_EXCEEDED");
+      }
+    }
+  }
 }

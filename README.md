@@ -1,6 +1,6 @@
 # Equipment Reservation Planner
 
-Shared equipment reservation planner built on the provided starter (Next.js, Prisma + SQLite, Material UI). It includes both assessment tickets: the availability fix and the create reservation flow.
+Shared equipment reservation planner built on the provided starter (Next.js, Prisma + SQLite, Material UI). It includes both assessment tickets (the availability fix and the create reservation flow) plus the optional edit flow.
 
 ## Setup
 
@@ -41,19 +41,20 @@ Open [http://localhost:3000](http://localhost:3000). No environment variables or
 ## Technical decisions
 
 - **Availability** (`src/server/reservations/availability.ts`): overlapping reservations are found with a half-open filter (`startAt < end` and `endAt > start`). Peak usage is computed with a small sweep over start/end events, applying releases before claims at the same instant so adjacent reservations don't add up.
-- **Validation**: one Zod schema (`src/schemas/create-reservation.ts`) is shared by the form and the API, so both enforce the same rules. Dates must match the `datetime-local` format, because `new Date()` alone accepts values like `"1"`.
+- **Validation**: one Zod schema (`src/schemas/reservation.ts`) is shared by the form and the API, so both enforce the same rules. Dates must match the `datetime-local` format, because `new Date()` alone accepts values like `"1"`.
 - **Create endpoint**: `POST /api/reservations` follows the conventions of the existing note route: flat `{ error, code }` responses, `400` for validation errors, and domain errors with their own status code.
 - **Atomic confirmation** (`src/server/reservations/create-reservation.ts`): the availability check and the insert run in the same Prisma transaction, and the availability functions receive the transaction client so the check reads inside it. A conflict returns `409 AVAILABILITY_EXCEEDED` with a message like "Only 2 Generators are available for the selected period."
-- **Form** (`src/features/reservations/create-reservation-form.tsx`): React Hook Form with `useFieldArray` for the items, native `datetime-local` inputs (no date library added), and the same `fetch` + `router.refresh()` pattern the note editor uses. Location and equipment options are loaded by the server page.
+- **Form** (`src/features/reservations/reservation-form.tsx`): React Hook Form with `useFieldArray` for the items, native `datetime-local` inputs (no date library added), and the same `fetch` + `router.refresh()` pattern the note editor uses. Location and equipment options are loaded by the server page. The same form is used to create and to edit.
+- **Edit** (`src/server/reservations/update-reservation.ts`): `PUT /api/reservations/[id]` runs the same checks as create, but the availability query excludes the reservation being edited, so it never conflicts with itself. Items are replaced inside the transaction and the note is kept. Changing a draft to Confirmed is how a draft gets confirmed, and it goes through the availability check like any other confirmation.
 
 ## Trade-offs and incomplete work
 
-- Edit Reservation (bonus) is not implemented, so a draft can't be confirmed after it's created. Supporting it mostly means letting the availability check exclude the reservation being edited.
 - When several items conflict, only the first one is reported.
 - UTC input keeps the app consistent, but people naturally type their local time. A time zone per location (Austin and Dallas are both `America/Chicago`) would be the better product choice.
-- There is no success message after creating a reservation; the user is taken back to the list.
+- There is no success message after creating or editing a reservation; the user is taken back to the list.
 - Error messages pluralize by adding an "s", which works for the current equipment names.
-- There are no automated tests, since the brief doesn't require them. Boundaries, peak usage, drafts, validation errors, conflicts, and two concurrent confirmations were verified manually against the seed data.
+- A missing reservation on the edit page shows the not-found screen, but with a `200` status: the root `loading.tsx` makes pages stream, and Next.js can't change the status once streaming has started.
+- There are no automated tests, since the brief doesn't require them. Boundaries, peak usage, drafts, validation errors, conflicts, edits (including a reservation not conflicting with itself), and two concurrent confirmations were verified manually against the seed data.
 
 ## Production considerations
 
