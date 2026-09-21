@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum ReservationStatus {
+  DRAFT
+  CONFIRMED
+}
+
+model Location {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  equipment    Equipment[]
+  reservations Reservation[]
+}
+
+model Equipment {
+  id            String            @id @default(cuid())
+  locationId    String
+  name          String
+  totalQuantity Int
+  location      Location          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  items         ReservationItem[]
+
+  @@unique([locationId, name])
+  @@index([locationId])
+}
+
+model Reservation {
+  id         String            @id @default(cuid())
+  locationId String
+  startAt    DateTime
+  endAt      DateTime
+  status     ReservationStatus
+  note       String?
+  createdAt  DateTime          @default(now())
+  location   Location          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  items      ReservationItem[]
+
+  @@index([locationId, status, startAt, endAt])
+}
+
+model ReservationItem {
+  id            String      @id @default(cuid())
+  reservationId String
+  equipmentId   String
+  quantity      Int
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  equipment     Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+
+  @@unique([reservationId, equipmentId])
+  @@index([equipmentId])
+}

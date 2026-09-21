@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Prisma-generated artifacts and local databases
+src/generated/
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal
+dev.db
+dev.db-journal
+dev.db-shm
+dev.db-wal
+
+# Environment overrides (the starter needs none)
+.env
+.env.local
+.env.*.local
+
+# Logs and tooling
+*.log
+.pnpm-debug.log*
+.eslintcache
+*.tsbuildinfo
+.turbo/
+coverage/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
