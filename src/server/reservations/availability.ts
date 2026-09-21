@@ -1,5 +1,6 @@
 import { DomainError } from "@/lib/domain-error";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 
 interface AvailabilityInput {
   locationId: string;
@@ -12,12 +13,15 @@ interface AvailabilityCheckInput extends AvailabilityInput {
   requestedQuantity: number;
 }
 
-export async function getAvailableQuantity(input: AvailabilityInput): Promise<number> {
+export async function getAvailableQuantity(
+  input: AvailabilityInput,
+  db: Prisma.TransactionClient = prisma,
+): Promise<number> {
   if (input.endAt <= input.startAt) {
     throw new DomainError("End time must be after start time.", 400, "INVALID_INTERVAL");
   }
 
-  const equipment = await prisma.equipment.findFirst({
+  const equipment = await db.equipment.findFirst({
     where: { id: input.equipmentId, locationId: input.locationId },
     select: { totalQuantity: true },
   });
@@ -29,7 +33,7 @@ export async function getAvailableQuantity(input: AvailabilityInput): Promise<nu
       "EQUIPMENT_NOT_FOUND",
     );
   }
-  const reservations = await prisma.reservation.findMany({
+  const reservations = await db.reservation.findMany({
     where: {
       locationId: input.locationId,
       status: "CONFIRMED",
@@ -90,12 +94,13 @@ function getPeakReservedQuantity(
 
 export async function checkAvailability(
   input: AvailabilityCheckInput,
+  db: Prisma.TransactionClient = prisma,
 ): Promise<{ available: boolean; availableQuantity: number }> {
   if (!Number.isInteger(input.requestedQuantity) || input.requestedQuantity <= 0) {
     throw new DomainError("Quantity must be a positive whole number.", 400, "INVALID_QUANTITY");
   }
 
-  const availableQuantity = await getAvailableQuantity(input);
+  const availableQuantity = await getAvailableQuantity(input, db);
   return {
     available: input.requestedQuantity <= availableQuantity,
     availableQuantity,
