@@ -29,17 +29,17 @@ export async function getAvailableQuantity(input: AvailabilityInput): Promise<nu
       "EQUIPMENT_NOT_FOUND",
     );
   }
-
-  // Availability behavior is part of the candidate challenge.
   const reservations = await prisma.reservation.findMany({
     where: {
       locationId: input.locationId,
       status: "CONFIRMED",
-      startAt: { lte: input.endAt },
-      endAt: { gte: input.startAt },
+      startAt: { lt: input.endAt },
+      endAt: { gt: input.startAt },
       items: { some: { equipmentId: input.equipmentId } },
     },
     select: {
+      startAt: true,
+      endAt: true,
       items: {
         where: { equipmentId: input.equipmentId },
         select: { quantity: true },
@@ -47,12 +47,45 @@ export async function getAvailableQuantity(input: AvailabilityInput): Promise<nu
     },
   });
 
-  const reservedQuantity = reservations.reduce(
-    (sum, reservation) => sum + reservation.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-    0,
-  );
+  /**
+   * const reservedQuantity = reservations.reduce(
+   *   (sum, reservation) => sum + reservation.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
+   *   0,
+   * );
+   * return Math.max(0, equipment.totalQuantity - reservedQuantity);
+   */
 
-  return Math.max(0, equipment.totalQuantity - reservedQuantity);
+  return Math.max(0, equipment.totalQuantity - getPeakReservedQuantity(reservations));
+}
+
+/**
+ * Let's name the 4 Generators: A, B, C, D.
+ *
+ *               09:00 ──── 11:00 ──── 12:00 ──── 13:00 ──── 15:00
+ * Morning (2)     [ A  B ───────────────)
+ * Afternoon (2)                         [ A  B ───────────────)
+ * Free                C  D       C  D       C  D       C  D
+ * New 11–13                  [ C  D ───────────────)   ✓
+ */
+function getPeakReservedQuantity(
+  reservations: { startAt: Date; endAt: Date; items: { quantity: number }[] }[],
+): number {
+  const events = reservations.flatMap((reservation) => {
+    const quantity = reservation.items.reduce((sum, item) => sum + item.quantity, 0);
+    return [
+      { time: reservation.startAt.getTime(), delta: quantity },
+      { time: reservation.endAt.getTime(), delta: -quantity },
+    ];
+  });
+  events.sort((a, b) => a.time - b.time || a.delta - b.delta);
+
+  let current = 0;
+  let peak = 0;
+  for (const event of events) {
+    current += event.delta;
+    peak = Math.max(peak, current);
+  }
+  return peak;
 }
 
 export async function checkAvailability(
