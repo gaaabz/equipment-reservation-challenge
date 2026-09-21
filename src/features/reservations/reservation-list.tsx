@@ -1,6 +1,7 @@
 "use client";
 
 import EditNoteIcon from "@mui/icons-material/EditNote";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import {
   Box,
   Button,
@@ -91,6 +92,14 @@ export function ReservationList({ reservations }: { reservations: ReservationLis
                       <EditNoteIcon />
                     </IconButton>
                   </Tooltip>
+                  <Tooltip title="Edit reservation">
+                    <IconButton
+                      aria-label={`Edit reservation for ${reservation.locationName} reservation starting ${formatDate(reservation.startAt)}`}
+                      href={`/reservations/${reservation.id}/edit`}
+                    >
+                      <EditOutlinedIcon />
+                    </IconButton>
+                  </Tooltip>
                 </TableCell>
               </TableRow>
             ))}
@@ -120,14 +129,22 @@ export function ReservationList({ reservations }: { reservations: ReservationLis
                   <Typography variant="caption" color="text.secondary">Internal note</Typography>
                   <Typography>{reservation.note ?? "No note"}</Typography>
                 </Box>
-                <Button
-                  variant="outlined"
-                  startIcon={<EditNoteIcon />}
-                  onClick={() => setEditing(reservation)}
-                  sx={{ alignSelf: "flex-start" }}
-                >
-                  Edit note
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<EditNoteIcon />}
+                    onClick={() => setEditing(reservation)}
+                  >
+                    Edit note
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<EditOutlinedIcon />}
+                    href={`/reservations/${reservation.id}/edit`}
+                  >
+                    Edit
+                  </Button>
+                </Stack>
               </Stack>
             </CardContent>
           </Card>

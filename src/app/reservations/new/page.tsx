@@ -1,6 +1,6 @@
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { Box, Button, Card, CardContent, Stack, Typography } from "@mui/material";
-import { CreateReservationForm } from "@/features/reservations/create-reservation-form";
+import { ReservationForm } from "@/features/reservations/reservation-form";
 import { listReservationOptions } from "@/server/reservations/list-reservation-options";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export default async function NewReservationPage() {
       </Box>
 
       {hasEquipment ? (
-        <CreateReservationForm locations={locations} />
+        <ReservationForm locations={locations} />
       ) : (
         <Card>
           <CardContent>

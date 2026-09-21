@@ -6,6 +6,10 @@ export function parseUtcDateTime(value: string): Date {
   return new Date(`${value}Z`);
 }
 
+export function formatUtcDateTime(date: Date): string {
+  return date.toISOString().slice(0, 16);
+}
+
 const itemSchema = z.object({
   equipmentId: z.string().min(1, "Select equipment."),
   quantity: z
@@ -14,7 +18,7 @@ const itemSchema = z.object({
     .positive("Quantity must be greater than zero."),
 });
 
-export const createReservationSchema = z
+export const reservationSchema = z
   .object({
     locationId: z.string().min(1, "Select a location."),
     startAt: z
@@ -57,4 +61,4 @@ export const createReservationSchema = z
     });
   });
 
-export type CreateReservationInput = z.infer<typeof createReservationSchema>;
+export type ReservationInput = z.infer<typeof reservationSchema>;

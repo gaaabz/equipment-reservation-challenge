@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { DomainError } from "@/lib/domain-error";
 import { reservationSchema } from "@/schemas/reservation";
-import { createReservation } from "@/server/reservations/create-reservation";
+import { updateReservation } from "@/server/reservations/update-reservation";
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function PUT(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
   try {
     const body: unknown = await request.json();
     const parsed = reservationSchema.safeParse(body);
@@ -18,8 +21,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const reservation = await createReservation(parsed.data);
-    return NextResponse.json({ reservation }, { status: 201 });
+    const { id } = await context.params;
+    const reservation = await updateReservation(id, parsed.data);
+    return NextResponse.json({ reservation });
   } catch (error: unknown) {
     if (error instanceof DomainError) {
       return NextResponse.json(
@@ -35,9 +39,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    console.error("Unexpected create reservation error", error);
+    console.error("Unexpected update reservation error", error);
     return NextResponse.json(
-      { error: "The reservation could not be created. Please try again.", code: "INTERNAL_ERROR" },
+      { error: "The reservation could not be saved. Please try again.", code: "INTERNAL_ERROR" },
       { status: 500 },
     );
   }

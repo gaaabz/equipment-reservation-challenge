@@ -22,56 +22,70 @@ import {
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
-import { createReservationSchema, type CreateReservationInput } from "@/schemas/create-reservation";
+import { reservationSchema, type ReservationInput } from "@/schemas/reservation";
 import type { ReservationLocationOption } from "@/types/reservation";
 
 interface ApiErrorBody {
   error?: string;
 }
 
-export function CreateReservationForm({ locations }: { locations: ReservationLocationOption[] }) {
+const emptyDefaultValues: ReservationInput = {
+  locationId: "",
+  startAt: "",
+  endAt: "",
+  status: "DRAFT",
+  items: [{ equipmentId: "", quantity: 1 }],
+};
+
+export function ReservationForm({
+  locations,
+  reservationId,
+  defaultValues,
+}: {
+  locations: ReservationLocationOption[];
+  reservationId?: string;
+  defaultValues?: ReservationInput;
+}) {
   const router = useRouter();
+  const isEditing = Boolean(reservationId);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [isCreated, setIsCreated] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const {
     control,
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<CreateReservationInput>({
-    resolver: zodResolver(createReservationSchema),
-    defaultValues: {
-      locationId: "",
-      startAt: "",
-      endAt: "",
-      status: "DRAFT",
-      items: [{ equipmentId: "", quantity: 1 }],
-    },
+  } = useForm<ReservationInput>({
+    resolver: zodResolver(reservationSchema),
+    defaultValues: defaultValues ?? emptyDefaultValues,
   });
   const { fields, append, remove, replace } = useFieldArray({ control, name: "items" });
 
   const locationId = useWatch({ control, name: "locationId" });
   const selectedLocation = locations.find((location) => location.id === locationId);
   const itemsError = errors.items?.message ?? errors.items?.root?.message;
-  const isBusy = isSubmitting || isCreated;
+  const isBusy = isSubmitting || isSaved;
 
-  async function onSubmit(input: CreateReservationInput) {
+  async function onSubmit(input: ReservationInput) {
     setServerError(null);
 
     try {
-      const response = await fetch("/api/reservations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
+      const response = await fetch(
+        isEditing ? `/api/reservations/${reservationId}` : "/api/reservations",
+        {
+          method: isEditing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        },
+      );
       const body = (await response.json()) as ApiErrorBody;
 
       if (!response.ok) {
-        setServerError(body.error ?? "The reservation could not be created.");
+        setServerError(body.error ?? "The reservation could not be saved.");
         return;
       }
 
-      setIsCreated(true);
+      setIsSaved(true);
       router.push("/");
       router.refresh();
     } catch {
@@ -221,7 +235,7 @@ export function CreateReservationForm({ locations }: { locations: ReservationLoc
                 Cancel
               </Button>
               <Button type="submit" variant="contained" disabled={isBusy}>
-                {isBusy ? "Saving…" : "Create reservation"}
+                {isBusy ? "Saving…" : isEditing ? "Save changes" : "Create reservation"}
               </Button>
             </Stack>
           </Stack>
